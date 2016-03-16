@@ -35,8 +35,108 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <ipxe/netdevice.h>
 #include <ipxe/guestrpc.h>
 
+#include <yxml.h>
+#define BUFSIZE 4096
+
 /** GuestInfo GuestRPC channel */
 static int guestinfo_channel;
+
+static char* ovf_env = NULL;
+
+/* match name, ignoring namespace if there is one */
+int guestinfo_xml_is_same_name(const char* s, const char* name) {
+  const char* pos = strstr(s, ":");
+
+  pos = (pos == NULL) ? s : pos+1;
+  return strcmp(pos, name) == 0;
+}
+
+const char* guestinfo_get_ovf_property(const char* key) {
+  void *buf = zalloc(BUFSIZE);
+  void *val_buf = zalloc(BUFSIZE);
+  yxml_t x;
+  const char *key_cur = NULL;
+  int read_key = 0, read_val = 0;
+  int looking_for_key = 0;
+  int found_key = 0;
+  char *cur_val = NULL;
+
+  yxml_init(&x, buf, BUFSIZE);
+
+  for(; *ovf_env; ovf_env++) {
+    yxml_ret_t r = yxml_parse(&x, *ovf_env);
+
+    switch (r) {
+    case YXML_ELEMSTART:
+      if (guestinfo_xml_is_same_name(x.elem, "Property")) {
+        looking_for_key = 1;
+        *((char*)val_buf) = 0;
+      }
+      break;
+    case YXML_ELEMEND:
+      looking_for_key = 0;
+      if (found_key) {
+        return val_buf;
+      }
+      break;
+    case YXML_ATTRSTART:
+      if (looking_for_key && guestinfo_xml_is_same_name(x.attr, "key")) {
+        read_key = 1;
+        key_cur = key;
+      }
+      if (looking_for_key && guestinfo_xml_is_same_name(x.attr, "value")) {
+        read_val = 1;
+        cur_val = val_buf;
+      }
+
+      break;
+    case YXML_ATTREND:
+      if (read_key && strlen(key_cur) == 0) {
+        found_key = 1;
+      }
+      read_key = read_val = 0;
+      break;
+    case YXML_ATTRVAL:
+      if (read_key) {
+        int max = strlen(x.data);
+        if (strncmp(key_cur, x.data, max) == 0) {
+          key_cur += max;
+        } else {
+          read_key = 0;
+        }
+      }
+
+      if (read_val) {
+        int size = strlen(x.data);
+        memcpy(cur_val, x.data, size);
+        cur_val += size;
+        *cur_val = 0;
+      }
+      break;
+    default:
+      break;
+    }
+  }
+  return NULL;
+}
+
+void guestinfo_ovf_load() {
+	int info_len;
+	char *info;
+	const char* cmd = "info-get guestinfo.ovfEnv";
+
+	info_len = guestrpc_command(guestinfo_channel, cmd , NULL, 0);
+	if (info_len < 0) return;
+
+	info = zalloc(info_len + 1 /* NUL */);
+	info[info_len] = '\0';
+
+	info_len = guestrpc_command(guestinfo_channel, cmd,
+				    info, info_len);
+	if (info_len < 0) return;
+
+	ovf_env = info;
+}
 
 /**
  * Fetch value of typed GuestInfo setting
@@ -70,46 +170,50 @@ static int guestinfo_fetch_type ( struct settings *settings,
 		   parent_name, ( parent_name[0] ? "." : "" ), setting->name,
 		   ( type ? "." : "" ), ( type ? type->name : "" ) );
 
-	/* Check for existence and obtain length of GuestInfo value */
-	info_len = guestrpc_command ( guestinfo_channel, command, NULL, 0 );
-	if ( info_len < 0 ) {
-		ret = info_len;
-		goto err_get_info_len;
+	info = (char*) guestinfo_get_ovf_property(command + 9); /* guestinfo.* */
+	if (info == NULL) {
+		/* Check for existence and obtain length of GuestInfo value */
+		info_len = guestrpc_command ( guestinfo_channel, command, NULL, 0 );
+		if ( info_len < 0 ) {
+			ret = info_len;
+			goto err_get_info_len;
+		}
+
+		/* Mark as found */
+		*found = 1;
+
+		/* Determine default type if necessary */
+		if ( ! type ) {
+			predefined = find_setting ( setting->name );
+			type = ( predefined ? predefined->type : &setting_type_string );
+		}
+		assert ( type != NULL );
+
+		/* Allocate temporary block to hold GuestInfo value */
+		info = zalloc ( info_len + 1 /* NUL */ );
+		if ( ! info ) {
+			DBGC ( settings, "GuestInfo %p could not allocate %d bytes\n",
+			       settings, info_len );
+			ret = -ENOMEM;
+			goto err_alloc;
+		}
+		info[info_len] = '\0';
+
+		/* Fetch GuestInfo value */
+		check_len = guestrpc_command ( guestinfo_channel, command,
+					       info, info_len );
+		if ( check_len < 0 ) {
+			ret = check_len;
+			goto err_get_info;
+		}
+		if ( check_len != info_len ) {
+			DBGC ( settings, "GuestInfo %p length mismatch (expected %d, "
+			       "got %d)\n", settings, info_len, check_len );
+			ret = -EIO;
+			goto err_get_info;
+		}
 	}
 
-	/* Mark as found */
-	*found = 1;
-
-	/* Determine default type if necessary */
-	if ( ! type ) {
-		predefined = find_setting ( setting->name );
-		type = ( predefined ? predefined->type : &setting_type_string );
-	}
-	assert ( type != NULL );
-
-	/* Allocate temporary block to hold GuestInfo value */
-	info = zalloc ( info_len + 1 /* NUL */ );
-	if ( ! info ) {
-		DBGC ( settings, "GuestInfo %p could not allocate %d bytes\n",
-		       settings, info_len );
-		ret = -ENOMEM;
-		goto err_alloc;
-	}
-	info[info_len] = '\0';
-
-	/* Fetch GuestInfo value */
-	check_len = guestrpc_command ( guestinfo_channel, command,
-				       info, info_len );
-	if ( check_len < 0 ) {
-		ret = check_len;
-		goto err_get_info;
-	}
-	if ( check_len != info_len ) {
-		DBGC ( settings, "GuestInfo %p length mismatch (expected %d, "
-		       "got %d)\n", settings, info_len, check_len );
-		ret = -EIO;
-		goto err_get_info;
-	}
 	DBGC2 ( settings, "GuestInfo %p found %s = \"%s\"\n",
 		settings, &command[9] /* Skip "info-get " */, info );
 
@@ -189,6 +293,8 @@ static void guestinfo_init ( void ) {
 		return;
 	}
 
+        guestinfo_ovf_load();
+
 	/* Register root GuestInfo settings */
 	if ( ( rc = register_settings ( &guestinfo_settings, NULL,
 					"vmware" ) ) != 0 ) {
@@ -261,6 +367,11 @@ static void guestinfo_net_remove ( struct net_device *netdev ) {
 			return;
 		}
 	}
+
+        if (ovf_env != NULL) {
+            free(ovf_env);
+            ovf_env = NULL;
+        }
 }
 
 /** GuestInfo per-netdevice driver */
