@@ -1,3 +1,5 @@
 #!ipxe
-  
-echo "plop"
+
+echo "before"
+echo ${pxeurl}
+echo "after"
