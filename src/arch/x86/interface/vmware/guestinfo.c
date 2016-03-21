@@ -156,25 +156,18 @@ static int guestinfo_fetch_type ( struct settings *settings,
 				  struct setting *setting,
 				  const struct setting_type *type,
 				  void *data, size_t len, int *found ) {
+	int ovf_search = (strstr(setting->name, "ovf.") == setting->name);
 	const char *parent_name = settings->parent->name;
-	const char *setting_name = setting->name;
-	char command[ 24 /* "info-get guestinfo.ipxe." */ +
+	const char *setting_name = ovf_search ? setting->name + 4 : setting->name;
+	const char *namespace = ovf_search ? "" : "ipxe.";
+	char command[ 19 /* "info-get guestinfo." */ +
+		      strlen (namespace) +
 		      strlen ( parent_name ) + 1 /* "." */ +
 		      strlen ( setting_name ) + 1 /* "." */ +
 		      ( type ? strlen ( type->name ) : 0 ) + 1 /* NUL */ ];
 	struct setting *predefined;
 	char *info = NULL;
-	char *namespace;
-	int ovf_search = 0;
 	int ret;
-
-	if (strstr(setting_name, "ovf.") == setting_name) {
-		namespace = "";
-		ovf_search = 1;
-		setting_name += 4;
-	} else {
-		namespace = "ipxe.";
-	}
 
 	/* Construct info-get command */
 	snprintf ( command, sizeof ( command ),
