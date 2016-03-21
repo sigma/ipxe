@@ -1,0 +1,21 @@
+# Disk DescriptorFile
+version=1
+encoding="UTF-8"
+CID=fffffffe
+parentCID=ffffffff
+isNativeSnapshot="no"
+createType="monolithicFlat"
+
+# Extent description
+RW 4096 FLAT "ipxe-flat.vmdk" 0
+
+# The Disk Data Base
+#DDB
+
+ddb.adapterType = "lsilogic"
+ddb.geometry.cylinders = "2"
+ddb.geometry.heads = "64"
+ddb.geometry.sectors = "32"
+ddb.longContentID = "64ea0b266f6be73437d24cbbfffffffe"
+ddb.uuid = "60 00 C2 9b c0 28 9d 72-fc 8c aa 2c 39 08 d9 55"
+ddb.virtualHWVersion = "10"
