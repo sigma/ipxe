@@ -36,7 +36,7 @@ FILE_LICENCE ( GPL2_OR_LATER );
 #include <ipxe/guestrpc.h>
 
 #include <yxml.h>
-#define BUFSIZE 4096
+#define BUFSIZE 256
 
 /** GuestInfo GuestRPC channel */
 static int guestinfo_channel;
@@ -60,12 +60,12 @@ const char* guestinfo_get_ovf_property(const char* key) {
   int looking_for_key = 0;
   int found_key = 0;
   char *cur_val = NULL;
+  char *doc = ovf_env;
 
   yxml_init(&x, buf, BUFSIZE);
 
-  for(; *ovf_env; ovf_env++) {
-    yxml_ret_t r = yxml_parse(&x, *ovf_env);
-
+  for(; *doc; doc++) {
+    yxml_ret_t r = yxml_parse(&x, *doc);
     switch (r) {
     case YXML_ELEMSTART:
       if (guestinfo_xml_is_same_name(x.elem, "Property")) {
@@ -76,6 +76,7 @@ const char* guestinfo_get_ovf_property(const char* key) {
     case YXML_ELEMEND:
       looking_for_key = 0;
       if (found_key) {
+	free(buf);
         return val_buf;
       }
       break;
@@ -117,6 +118,8 @@ const char* guestinfo_get_ovf_property(const char* key) {
       break;
     }
   }
+  free(buf);
+  free(val_buf);
   return NULL;
 }
 
