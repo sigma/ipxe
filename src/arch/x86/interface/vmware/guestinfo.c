@@ -162,9 +162,7 @@ static int guestinfo_fetch_type ( struct settings *settings,
 		      strlen ( setting->name ) + 1 /* "." */ +
 		      ( type ? strlen ( type->name ) : 0 ) + 1 /* NUL */ ];
 	struct setting *predefined;
-	char *info;
-	int info_len;
-	int check_len;
+	char *info = NULL;
 	int ret;
 
 	/* Construct info-get command */
@@ -173,8 +171,20 @@ static int guestinfo_fetch_type ( struct settings *settings,
 		   parent_name, ( parent_name[0] ? "." : "" ), setting->name,
 		   ( type ? "." : "" ), ( type ? type->name : "" ) );
 
-	info = (char*) guestinfo_get_ovf_property(command + 9); /* guestinfo.* */
+	/* Determine default type if necessary */
+	if ( ! type ) {
+		predefined = find_setting ( setting->name );
+		type = ( predefined ? predefined->type : &setting_type_string );
+	}
+	assert ( type != NULL );
+
+	if (strstr(command + 9, "guestinfo.ipxe.ovf.") != NULL) {
+		info = (char*) guestinfo_get_ovf_property(command + 9); /* guestinfo.* */
+	}
 	if (info == NULL) {
+		int info_len;
+		int check_len;
+
 		/* Check for existence and obtain length of GuestInfo value */
 		info_len = guestrpc_command ( guestinfo_channel, command, NULL, 0 );
 		if ( info_len < 0 ) {
@@ -184,13 +194,6 @@ static int guestinfo_fetch_type ( struct settings *settings,
 
 		/* Mark as found */
 		*found = 1;
-
-		/* Determine default type if necessary */
-		if ( ! type ) {
-			predefined = find_setting ( setting->name );
-			type = ( predefined ? predefined->type : &setting_type_string );
-		}
-		assert ( type != NULL );
 
 		/* Allocate temporary block to hold GuestInfo value */
 		info = zalloc ( info_len + 1 /* NUL */ );
@@ -215,6 +218,8 @@ static int guestinfo_fetch_type ( struct settings *settings,
 			ret = -EIO;
 			goto err_get_info;
 		}
+	} else {
+		*found = 1;
 	}
 
 	DBGC2 ( settings, "GuestInfo %p found %s = \"%s\"\n",

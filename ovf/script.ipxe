@@ -1,5 +1,6 @@
 #!ipxe
 
 echo "before"
-echo ${pxeurl}
+echo ${ovf.coreos-url}
 echo "after"
+sleep 60
