@@ -1,6 +1,3 @@
 #!ipxe
 
-echo "before"
-echo ${ovf.coreos-url}
-echo "after"
-sleep 60
+echo Loading CoreOS from ${ovf.coreos-url}

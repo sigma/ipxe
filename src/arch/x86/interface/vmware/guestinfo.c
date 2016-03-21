@@ -157,31 +157,42 @@ static int guestinfo_fetch_type ( struct settings *settings,
 				  const struct setting_type *type,
 				  void *data, size_t len, int *found ) {
 	const char *parent_name = settings->parent->name;
+	const char *setting_name = setting->name;
 	char command[ 24 /* "info-get guestinfo.ipxe." */ +
 		      strlen ( parent_name ) + 1 /* "." */ +
-		      strlen ( setting->name ) + 1 /* "." */ +
+		      strlen ( setting_name ) + 1 /* "." */ +
 		      ( type ? strlen ( type->name ) : 0 ) + 1 /* NUL */ ];
 	struct setting *predefined;
 	char *info = NULL;
+	char *namespace;
+	int ovf_search = 0;
 	int ret;
+
+	if (strstr(setting_name, "ovf.") == setting_name) {
+		namespace = "";
+		ovf_search = 1;
+		setting_name += 4;
+	} else {
+		namespace = "ipxe.";
+	}
 
 	/* Construct info-get command */
 	snprintf ( command, sizeof ( command ),
-		   "info-get guestinfo.ipxe.%s%s%s%s%s",
-		   parent_name, ( parent_name[0] ? "." : "" ), setting->name,
+		   "info-get guestinfo.%s%s%s%s%s%s", namespace,
+		   parent_name, ( parent_name[0] ? "." : "" ), setting_name,
 		   ( type ? "." : "" ), ( type ? type->name : "" ) );
 
 	/* Determine default type if necessary */
 	if ( ! type ) {
-		predefined = find_setting ( setting->name );
+		predefined = find_setting ( setting_name );
 		type = ( predefined ? predefined->type : &setting_type_string );
 	}
 	assert ( type != NULL );
 
-	if (strstr(command + 9, "guestinfo.ipxe.ovf.") != NULL) {
+	if (ovf_search) {
 		info = (char*) guestinfo_get_ovf_property(command + 9); /* guestinfo.* */
-	}
-	if (info == NULL) {
+		if (info != NULL) *found = 1;
+	} else {
 		int info_len;
 		int check_len;
 
@@ -218,8 +229,6 @@ static int guestinfo_fetch_type ( struct settings *settings,
 			ret = -EIO;
 			goto err_get_info;
 		}
-	} else {
-		*found = 1;
 	}
 
 	DBGC2 ( settings, "GuestInfo %p found %s = \"%s\"\n",
