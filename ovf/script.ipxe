@@ -1,3 +1,11 @@
 #!ipxe
 
-echo Loading CoreOS from ${ovf.coreos-url}
+set base-url ${ovf.coreos.pxe.base}
+isset ${ovf.coreos.config.url} || set ovf.coreos.config.url ""
+
+echo Loading CoreOS from ${base-url}
+
+dhcp
+kernel ${base-url}/coreos_production_pxe.vmlinuz cloud-config-url=${ovf.coreos.config.url}
+initrd ${base-url}/coreos_production_pxe_image.cpio.gz
+boot
