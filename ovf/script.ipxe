@@ -5,6 +5,6 @@ set base-url ${ovf.coreos.pxe.base}
 echo Loading CoreOS from ${base-url}
 
 dhcp
-kernel ${base-url}/coreos_production_pxe.vmlinuz root=LABEL=ROOT coreos.autologin
+kernel ${base-url}/coreos_production_pxe.vmlinuz root=LABEL=ROOT coreos.autologin net.ifnames=0 biosdevname=0
 initrd ${base-url}/coreos_production_pxe_image.cpio.gz
 boot
